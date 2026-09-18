@@ -9,8 +9,36 @@ type FavoritesContextValue = { favoriteIds: number[]; toggleFavorite: (id: numbe
 export const FavoritesContext = createContext<FavoritesContextValue | null>(null);
 
 export function FavoritesProvider({ children }: { children: React.ReactNode }) {
-  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
-  const toggleFavorite = (id: number) => setFavoriteIds((current) => current.includes(id) ? current.filter((favoriteId) => favoriteId !== id) : [...current, id]);
+  const [favoriteIds, setFavoriteIds] = useState<number[]>(() => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const savedFavorites = window.localStorage.getItem("wanderlust-favorites");
+      const parsedFavorites: unknown = savedFavorites ? JSON.parse(savedFavorites) : [];
+      return Array.isArray(parsedFavorites) && parsedFavorites.every((id) => typeof id === "number")
+        ? parsedFavorites
+        : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleFavorite = (id: number) => {
+    setFavoriteIds((current) => {
+      const nextFavorites = current.includes(id)
+        ? current.filter((favoriteId) => favoriteId !== id)
+        : [...current, id];
+
+      try {
+        window.localStorage.setItem("wanderlust-favorites", JSON.stringify(nextFavorites));
+      } catch {
+        // Favorites still work for the current session if storage is unavailable.
+      }
+
+      return nextFavorites;
+    });
+  };
+
   return <FavoritesContext.Provider value={{ favoriteIds, toggleFavorite }}>{children}</FavoritesContext.Provider>;
 }
 
@@ -60,7 +88,18 @@ export function FavoriteButton({ experienceId }: { experienceId: number }) {
   const favorite = favoriteIds.includes(experienceId);
 
   return (
-    <button className={`favorite-button ${favorite ? "is-favorite" : ""}`} onClick={() => toggleFavorite(experienceId)} aria-label={favorite ? "Remove from favorites" : "Add to favorites"}>
+    <button
+      type="button"
+      className={`favorite-button ${favorite ? "is-favorite" : ""}`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFavorite(experienceId);
+      }}
+      aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+      aria-pressed={favorite}
+      title={favorite ? "Remove from favorites" : "Add to favorites"}
+    >
       {favorite ? "♥" : "♡"}
     </button>
   );
